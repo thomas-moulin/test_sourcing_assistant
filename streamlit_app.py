@@ -153,7 +153,3 @@ def main():
     #     st.session_state.thread = None
     #     st.session_state.run = None
     #     st.session_state.interaction = ""
-
-
-if __name__ == "__main__":
-    main()
