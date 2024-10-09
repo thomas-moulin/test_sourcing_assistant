@@ -152,4 +152,5 @@ def main():
     #     # Reset session state if needed
     #     st.session_state.thread = None
     #     st.session_state.run = None
-    #     st.session_state.interaction = ""
+    #     st.session_state.interaction = "
+main()
