@@ -100,8 +100,6 @@ client = OpenAI()
 with open('response_format.json') as g:
     response_json = json.load(g)
 
-response_format = {"type": "json_schema", "json_schema": { "name": response_json["name"], "schema": response_json["parameters"]["json_schema"]["schema"]}}
-
 
 # Streamlit app
 def main():
