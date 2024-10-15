@@ -1,57 +1,117 @@
 import streamlit as st
 from openai import OpenAI
-import time
 import json
+from pydantic import BaseModel, Field
+from typing import List, Literal, Optional
+from create_candidate import create_candidate
+from create_job_description import create_job_description
+from enum import Enum
+from langchain_core.output_parsers import JsonOutputParser
 
-# Initialize client
-client = OpenAI(default_headers={"OpenAI-Beta": "assistants=v2"})
+parser = JsonOutputParser()
 
-ASSISTANT_ID = "asst_HvJybLbmLcpenE4Q5dFBNZVh"
+candidates_data_description = """
+1. **Candidate ID**: Unique identifier for each candidate.
+2. **Diploma Level**: Highest education degree attained by the candidate.
+3. **Professional Headline**: A brief professional summary or title.
+4. **Next Job Preferences**: Details regarding the candidate's next desired job, including:
+   - Contract types desired (e.g., full-time, apprenticeship).
+   - Experience levels preferred (e.g., zero to one year, one to three years).
+   - Desired locations with specifics on city, country, latitude, longitude, and state.
+   - Remote work preferences (e.g., full-time remote, partial remote).
+   - Specific professions and custom professions they are interested in.
+5. **Minimum Salary Expectation**: The minimum salary the candidate is expecting.
+6. **Skills**: A list of skills the candidate possesses, each with potential multilinguistic names, references, and types (e.g., tool, skill).
+7. **Work Experiences**: Details of the candidate's work history, including:
+   - Contract type (e.g., full-time, internship).
+   - Organization details, including name, logo URL, reference, and URL.
+   - Profession and specific title within the job.
+   - Job description and key tasks carried out.
+   - Location of the job, including city and country details.
+   - Skills utilized in each role.
+   - Start and end dates of each job.
+   - Whether the job was full remote.
+8. **Educations**: Educational background of the candidate, including:
+   - Degree level (e.g., Bachelor's, Master's).
+   - Description of the degree or program.
+   - Institution name.
+   - Skills acquired during the education.
+   - Start and end dates.
+9. **Additional Fields**: For some entries, other fields such as certifications, specific achievements, or tools used in jobs.
+"""
 
-# Function to submit a message
-def submit_message(assistant_id, thread, user_message):
-    client.beta.threads.messages.create(
-        thread_id=thread.id, role="user", content=user_message
-    )
-    return client.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=assistant_id,
-    )
+system_content_candidate_new = """
+You are an experienced recruitment assistant. Your objective is to help a recruiter identify and build the key attributes and qualifications for the perfect candidate for a specific job opening by facilitating a structured conversation.
 
-# Function to get the response
-def get_response(thread):
-    return list(client.beta.threads.messages.list(thread_id=thread.id, order="desc"))
+INSTRUCTIONS
+You will be provided a job title, remote policy, job location, contract type and salary
 
-# Function to create a thread and run
-def create_thread_and_run(user_input):
-    thread = client.beta.threads.create()
-    run = submit_message(ASSISTANT_ID, thread, user_input)
-    return thread, run
+Gather Candidates Requirements:
+First ask the recruiter to add some details about the job opening. NO SUGGESTION on this PART
+Then ask about preferred past experiences. NO SUGGESTION on this PART
+Based on the information of job opening and past experience, ask for soft skills and hard skills the candidate should have. In order to help the recruiter, suggest the skills to the candidate (between 5 and 15 skills) in the suggestion fields. Ask in one questions all that information. PUT SUGGESTION ON THIS ONE. ONLY ONE QUESTION
+Based on the information of job opening and past experience, ask education level.  PUT SUGGESTION ON THIS ONE
 
-# Function to wait for the run to complete
-def wait_on_run(run, thread):
-    while run.status in ["queued", "in_progress"]:
-        run = client.beta.threads.runs.retrieve(
-            thread_id=thread.id,
-            run_id=run.id,
-        )
-        time.sleep(0.5)
-    return run
+Summarize the information gathered to ensure accuracy and completeness.
 
-# Streamlit app
-# Streamlit app
-# Streamlit app
+Confirm with the recruiter that all important aspects have been covered and ask if there’s anything else they’d like to add.
+
+to keep a chat based approach, gather the information in distinct question. 
+Questions must be short and simple to keep the experience fluid. Talk like if it was on wattsapp
+
+Once all informations are gathered the final output must be a complete summary of what the recruiter is looking for.
+
+FINAL OUTPUT:
+COMPLETE SUMMARY OF THE INFORMATION GATHERED 
+
+The message must be concised.
+KEEP IT SHORT AND SIMPLE
+
+
+"""
+
+
+class SuggestionType(str, Enum):
+    skill = "skill"
+    education = "education"
+    next_action = 'next_action'
+
+
+class Suggestion(BaseModel):
+    type: SuggestionType = Field(description="The type of suggestion when profile is completed suggestion type is next action and values are 'look for similar' and 'create job description'")
+    value: str = Field(description="The value associated with the suggestion type. if type is next action, values are always 'create job description' and'look for similar'")
+
+
+class Status(str, Enum):
+    in_progress = "In progress"
+    finish = "finish"
+
+
+class ResponseModel(BaseModel):
+    status: Status = Field(description="The status of the response, indicating whether the task is still ongoing or completed.")
+    response: str = Field(description="The text content of the response from the assistant. If the assistant suggests a skill, it must be in the suggestions fields. Do not repeat in the description what is proposed in suggestions. Each message should ask about one type of information and propose suggestions if relevant. For information about desired salary or past experience, it does not need to be in suggestions. When the user adds a new suggestion in free text, it does not need to be repeated in the next message.")
+    suggestions: List[Suggestion] = Field(description="An array of suggestion objects, each containing a type and value. If multiple values for the same type exist, they must be in a distinct object.")
+
+# Initialize OpenAI API key
+
+
+client = OpenAI()
+
+with open('response_format.json') as g:
+    response_json = json.load(g)
+
+response_format = {"type": "json_schema", "json_schema": { "name": response_json["name"], "schema": response_json["parameters"]["json_schema"]["schema"]}}
+
+
 # Streamlit app
 def main():
     st.title("AI SOURCING ASSISTANT")
 
     # Initialize session state for conversation
-    if 'thread' not in st.session_state:
-        st.session_state.thread = None
-    if 'run' not in st.session_state:
-        st.session_state.run = None
     if 'messages' not in st.session_state:
-        st.session_state.messages = [{"role": "assistant", "content": "Start by typing the job title, location, contract and salary for the position you're recruiting for "}]
+        st.session_state.messages = [
+            {"role": "system", "content": system_content_candidate_new + "\n" + candidates_data_description},
+            {"role": "assistant", "content": "Start by typing the job title, location, contract and salary for the position you're recruiting for "}]
     if 'suggestions' not in st.session_state:
         st.session_state.suggestions = []
     if 'selected_suggestions' not in st.session_state:
@@ -59,98 +119,79 @@ def main():
 
     # Display conversation history
     for msg in st.session_state.messages:
+        if msg["role"] == "system":
+            continue
         st.chat_message(msg["role"]).write(msg["content"])
-
-    # Ensure previous run is completed before allowing new input
-    if st.session_state.run:
-        st.session_state.run = wait_on_run(st.session_state.run, st.session_state.thread)
 
     # User input field at the bottom
     user_input = st.chat_input("Type your message here...") if not st.session_state.suggestions else None
 
     if user_input:
-        # Create a new thread if not exists
-        if st.session_state.thread is None:
-            st.session_state.thread, st.session_state.run = create_thread_and_run(user_input)
-        else:
-            # Ensure previous run is completed
-            st.session_state.run = wait_on_run(st.session_state.run, st.session_state.thread)
-            st.session_state.run = submit_message(ASSISTANT_ID, st.session_state.thread, user_input)
-
-        # Wait for the run to complete
-        st.session_state.run = wait_on_run(st.session_state.run, st.session_state.thread)
-
         # Add user input to conversation
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.chat_message("user").write(user_input)
 
-        # Fetch and display the last response
-        messages = get_response(st.session_state.thread)
-        if messages:
-            # Assuming the first message is the latest due to ordering "desc"
-            last_message_content = json.loads(messages[0].content[0].text.value)
-            response_text = last_message_content['response']
-            st.session_state.messages.append({"role": "assistant", "content": response_text})
-            st.chat_message("assistant").write(response_text)
+        # Call OpenAI ChatCompletion
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o-2024-08-06",
+            messages=st.session_state.messages,
+            response_format=ResponseModel
+        )
 
-            # Update and display suggestions
-            st.session_state.suggestions = last_message_content.get('suggestions', [])
+        # Process and display the response
+        msg = response.choices[0].message.content
+        print(msg)
+        response_text = parser.parse(msg)["response"]
+        st.session_state.messages.append({"role": "assistant", "content": response_text})
+        st.chat_message("assistant").write(response_text)
 
-        # Reset user input by setting the session state
-        #st.session_state.user_input = ""
+        # Update suggestions if available
+        # Assuming the suggestions are embedded in a specific JSON format within the content
+        content_data = json.loads(msg)
+        st.session_state.suggestions = content_data.get('suggestions', [])
+        st.session_state.selected_suggestions = []
 
-    # Always display suggestions if available and wait for user to submit them
+    # Display suggestions and allow submission with a button
     if st.session_state.suggestions:
         st.session_state.selected_suggestions = st.multiselect(
-            "Select suggestions to include in your response or type your suggestion in the chat:",
+            "Select suggestions to include in your response:",
             [f"{s['value']}" for s in st.session_state.suggestions]
         )
 
         if st.button("Submit Suggestions"):
             combined_input = ', '.join(st.session_state.selected_suggestions)
-            st.session_state.run = wait_on_run(st.session_state.run, st.session_state.thread)
-            st.session_state.run = submit_message(ASSISTANT_ID, st.session_state.thread, combined_input)
-            st.session_state.run = wait_on_run(st.session_state.run, st.session_state.thread)
             st.session_state.messages.append({"role": "user", "content": combined_input})
             st.chat_message("user").write(combined_input)
 
-            messages = get_response(st.session_state.thread)
-            if messages:
-                # Assuming the first message is the latest due to ordering "desc"
-                last_message_content = json.loads(messages[0].content[0].text.value)
-                response_text = last_message_content['response']
-                st.session_state.messages.append({"role": "assistant", "content": response_text})
-                st.chat_message("assistant").write(response_text)
+            # Call OpenAI ChatCompletion again with the new input
+            response = client.beta.chat.completions.parse(
+                model="gpt-4o-2024-08-06",
+                messages=st.session_state.messages,
+                response_format=ResponseModel
+            )
 
-                st.session_state.suggestions = last_message_content.get('suggestions', [])
+            msg = response.choices[0].message.content
+            print(msg)
+            response_text = parser.parse(msg)["response"]
+            st.session_state.last_description = response_text
+            st.session_state.messages.append({"role": "assistant", "content": response_text})
+            st.chat_message("assistant").write(response_text)
 
-            # Clear inputs after submission
-            st.session_state.suggestions = []
+            # Update suggestions from the assistant's response
+            content_data = json.loads(msg)
+            st.session_state.suggestions = content_data.get('suggestions', [])
+
+            if "create job description" in st.session_state.selected_suggestions:
+                job_desc = create_job_description(str(st.session_state.messages))
+                st.chat_message("assistant").write(job_desc)
+
+            if "look for similar" in st.session_state.selected_suggestions:
+                similar_profiles = create_candidate(str(st.session_state.messages))
+                st.chat_message("assistant").write(similar_profiles)
+
+
+            # Clear selected suggestions after submission
             st.session_state.selected_suggestions = []
 
-        # # Free text input
-        # additional_input = st.chat_input("Or add your own input:")
-        #
-        # if additional_input:
-        #     # Ensure previous run is completed before a new one
-        #     combined_input = ', '.join(st.session_state.selected_suggestions) + " " + additional_input
-        #     st.session_state.run = wait_on_run(st.session_state.run, st.session_state.thread)
-        #     st.session_state.run = submit_message(ASSISTANT_ID, st.session_state.thread, combined_input)
-        #     st.session_state.run = wait_on_run(st.session_state.run, st.session_state.thread)
-        #     st.session_state.messages.append({"role": "user", "content": combined_input})
-        #     st.chat_message("user").write(combined_input)
-        #     # Clear inputs after submission
-        #     st.session_state.suggestions = []
-        #     st.session_state.selected_suggestions = []
-        #     st.session_state.user_input = "ok"
-
-    #
-    # # Final action button
-    # if st.button("Finish Interaction"):
-    #     st.write("Finalizing interaction...")
-    #     # Logic for finalizing the interaction
-    #     # Reset session state if needed
-    #     st.session_state.thread = None
-    #     st.session_state.run = None
-    #     st.session_state.interaction = "
+            # Handle next actions
 main()
