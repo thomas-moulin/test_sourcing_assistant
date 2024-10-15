@@ -97,10 +97,6 @@ class ResponseModel(BaseModel):
 
 client = OpenAI()
 
-with open('response_format.json') as g:
-    response_json = json.load(g)
-
-
 # Streamlit app
 def main():
     st.title("AI SOURCING ASSISTANT")
