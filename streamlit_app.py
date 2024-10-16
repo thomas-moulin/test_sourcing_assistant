@@ -74,12 +74,12 @@ KEEP IT SHORT AND SIMPLE
 class SuggestionType(str, Enum):
     skill = "skill"
     education = "education"
-    next_action = 'next_action'
+    #next_action = 'next_action'
 
 
 class Suggestion(BaseModel):
-    type: SuggestionType = Field(description="The type of suggestion when profile is completed suggestion type is next action and values are 'look for similar' and 'create job description'")
-    value: str = Field(description="The value associated with the suggestion type. if type is next action, values are always 'create job description' and'look for similar'")
+    type: SuggestionType = Field(description="The type of suggestion")
+    value: str = Field(description="The value associated with the suggestion type")
 
 
 class Status(str, Enum):
@@ -88,7 +88,7 @@ class Status(str, Enum):
 
 
 class ResponseModel(BaseModel):
-    status: Status = Field(description="The status of the response, indicating whether the task is still ongoing or completed.")
+    status: Status = Field(description="The status of the response, indicating whether the task is still ongoing or completed. When outputing the summary of the candidates. The status must pass to finish")
     response: str = Field(description="The text content of the response from the assistant. If the assistant suggests a skill, it must be in the suggestions fields. Do not repeat in the description what is proposed in suggestions. Each message should ask about one type of information and propose suggestions if relevant. For information about desired salary or past experience, it does not need to be in suggestions. When the user adds a new suggestion in free text, it does not need to be repeated in the next message.")
     suggestions: List[Suggestion] = Field(description="An array of suggestion objects, each containing a type and value. If multiple values for the same type exist, they must be in a distinct object.")
 
@@ -96,6 +96,7 @@ class ResponseModel(BaseModel):
 
 
 client = OpenAI()
+
 
 # Streamlit app
 def main():
@@ -181,9 +182,9 @@ def main():
 
             # Clear selected suggestions after submission
             st.session_state.selected_suggestions = []
-           
+
             if parser.parse(msg)["status"] == "finish":
-               st.session_state.action_description = "finish"
+                st.session_state.action_description = "finish"
             # Handle next actions
 
     # Handle next actions when status is finish
