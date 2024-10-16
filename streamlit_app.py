@@ -110,6 +110,10 @@ def main():
         st.session_state.suggestions = []
     if 'selected_suggestions' not in st.session_state:
         st.session_state.selected_suggestions = []
+    if 'action_description' not in st.session_state:
+        st.session_state.action_description = "in progress"
+    if 'next_actions' not in st.session_state:
+        st.session_state.next_actions = []
 
     # Display conversation history
     for msg in st.session_state.messages:
@@ -175,17 +179,26 @@ def main():
             content_data = json.loads(msg)
             st.session_state.suggestions = content_data.get('suggestions', [])
 
-            if "create job description" in st.session_state.selected_suggestions:
-                job_desc = create_job_description(str(st.session_state.messages))
-                st.chat_message("assistant").write(job_desc)
-
-            if "look for similar" in st.session_state.selected_suggestions:
-                similar_profiles = create_candidate(str(st.session_state.messages))
-                st.chat_message("assistant").write("Below is the created candidate")
-                st.json(similar_profiles)
-
             # Clear selected suggestions after submission
             st.session_state.selected_suggestions = []
-
+           
+            if parser.parse(msg)["status"] == "finish":
+               st.session_state.action_description = "finish"
             # Handle next actions
+
+    # Handle next actions when status is finish
+    if st.session_state.action_description == "finish":
+        st.session_state.next_actions = st.multiselect(
+            "Choose next actions:",
+            ["create job description", "Generate fake candidate and look for similar"])
+        if st.button("Submit next actions"):
+            if "create job description" in st.session_state.next_actions:
+                job_desc = create_job_description(st.session_state.action_description)
+                st.chat_message("assistant").write(job_desc)
+
+            if "Generate fake candidate and look for similar" in st.session_state.next_actions:
+                similar_profiles = create_candidate(st.session_state.action_description)
+                st.chat_message("assistant").write("Here is the candidate description")
+                st.json(similar_profiles)
+
 main()
