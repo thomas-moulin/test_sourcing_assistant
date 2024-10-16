@@ -193,11 +193,11 @@ def main():
             ["create job description", "Generate fake candidate and look for similar"])
         if st.button("Submit next actions"):
             if "create job description" in st.session_state.next_actions:
-                job_desc = create_job_description(st.session_state.action_description)
+                job_desc = create_job_description(str(st.session_state.messages))
                 st.chat_message("assistant").write(job_desc)
 
             if "Generate fake candidate and look for similar" in st.session_state.next_actions:
-                similar_profiles = create_candidate(st.session_state.action_description)
+                similar_profiles = create_candidate(str(st.session_state.messages))
                 st.chat_message("assistant").write("Here is the candidate description")
                 st.json(similar_profiles)
 
