@@ -181,8 +181,8 @@ def main():
 
             if "look for similar" in st.session_state.selected_suggestions:
                 similar_profiles = create_candidate(str(st.session_state.messages))
-                st.chat_message("assistant").write(similar_profiles)
-
+                st.chat_message("assistant").write("Below is the created candidate")
+                st.json(similar_profiles)
 
             # Clear selected suggestions after submission
             st.session_state.selected_suggestions = []
